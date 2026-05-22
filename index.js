@@ -11,11 +11,12 @@ const client = new Client({
   ]
 });
 
-// IDs des salons de logs
+// IDs des salons
 const LOGS_ROLES = '1507450432216236083';
 const LOGS_VOCAL = '1507451538451464222';
 const LOGS_MODERATION = '1507452118074785922';
 const LOGS_MEMBRES = '1507452452889170100';
+const BOT_COMMANDES = '1507468511851577444';
 
 const commands = [
   new SlashCommandBuilder()
@@ -94,7 +95,6 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
   if (!logChannel) return;
   const member = newState.member;
 
-  // Rejoint un vocal
   if (!oldState.channelId && newState.channelId) {
     const embed = new EmbedBuilder()
       .setTitle('🎤 Rejoint un vocal')
@@ -102,17 +102,12 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
       .setDescription(`${member} a rejoint **${newState.channel.name}**`)
       .setTimestamp();
     logChannel.send({ embeds: [embed] });
-  }
-
-  // Quitté un vocal
-  else if (oldState.channelId && !newState.channelId) {
+  } else if (oldState.channelId && !newState.channelId) {
     await new Promise(r => setTimeout(r, 500));
     const auditLogs = await newState.guild.fetchAuditLogs({ type: AuditLogEvent.MemberDisconnect, limit: 1 });
     const entry = auditLogs.entries.first();
     const wasDisconnected = entry && (Date.now() - entry.createdTimestamp < 3000);
-    const embed = new EmbedBuilder()
-      .setColor(0xff6600)
-      .setTimestamp();
+    const embed = new EmbedBuilder().setColor(0xff6600).setTimestamp();
     if (wasDisconnected) {
       embed.setTitle('🔌 Déconnecté du vocal');
       embed.setDescription(`${member} a été déconnecté de **${oldState.channel.name}** par **${entry.executor.tag}**`);
@@ -121,17 +116,12 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
       embed.setDescription(`${member} a quitté **${oldState.channel.name}**`);
     }
     logChannel.send({ embeds: [embed] });
-  }
-
-  // Changé de vocal
-  else if (oldState.channelId !== newState.channelId) {
+  } else if (oldState.channelId !== newState.channelId) {
     await new Promise(r => setTimeout(r, 500));
     const auditLogs = await newState.guild.fetchAuditLogs({ type: AuditLogEvent.MemberMove, limit: 1 });
     const entry = auditLogs.entries.first();
     const wasMoved = entry && (Date.now() - entry.createdTimestamp < 3000);
-    const embed = new EmbedBuilder()
-      .setColor(0xffff00)
-      .setTimestamp();
+    const embed = new EmbedBuilder().setColor(0xffff00).setTimestamp();
     if (wasMoved) {
       embed.setTitle('🔀 Déplacé dans un vocal');
       embed.setDescription(`${member} a été déplacé de **${oldState.channel.name}** vers **${newState.channel.name}** par **${entry.executor.tag}**`);
@@ -142,7 +132,6 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
     logChannel.send({ embeds: [embed] });
   }
 
-  // Mis en sourdine par un modérateur
   if (!oldState.serverMute && newState.serverMute) {
     await new Promise(r => setTimeout(r, 500));
     const auditLogs = await newState.guild.fetchAuditLogs({ type: AuditLogEvent.MemberUpdate, limit: 1 });
@@ -155,7 +144,6 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
     logChannel.send({ embeds: [embed] });
   }
 
-  // Sourdine retirée
   if (oldState.serverMute && !newState.serverMute) {
     const embed = new EmbedBuilder()
       .setTitle('🔊 Sourdine retirée')
@@ -165,7 +153,6 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
     logChannel.send({ embeds: [embed] });
   }
 
-  // Micro coupé par un modérateur
   if (!oldState.serverDeaf && newState.serverDeaf) {
     await new Promise(r => setTimeout(r, 500));
     const auditLogs = await newState.guild.fetchAuditLogs({ type: AuditLogEvent.MemberUpdate, limit: 1 });
@@ -178,7 +165,6 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
     logChannel.send({ embeds: [embed] });
   }
 
-  // Micro rétabli
   if (oldState.serverDeaf && !newState.serverDeaf) {
     const embed = new EmbedBuilder()
       .setTitle('🎙️ Micro rétabli')
@@ -251,6 +237,11 @@ client.on('interactionCreate', async (interaction) => {
   }
 
   if (!interaction.isChatInputCommand()) return;
+
+  // Vérifier que la commande est utilisée dans #bot-commandes (sauf /reglement)
+  if (interaction.commandName !== 'reglement' && interaction.channelId !== BOT_COMMANDES) {
+    return interaction.reply({ content: `❌ Les commandes ne sont autorisées que dans <#${BOT_COMMANDES}> !`, ephemeral: true });
+  }
 
   if (interaction.commandName === 'reglement') {
     if (!interaction.member.permissions.has(PermissionsBitField.Flags.Administrator))
