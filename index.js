@@ -92,7 +92,6 @@ client.on('guildMemberRemove', (member) => {
 client.on('voiceStateUpdate', (oldState, newState) => {
   const logChannel = newState.guild.channels.cache.get(LOGS_VOCAL);
   if (!logChannel) return;
-
   const member = newState.member;
 
   if (!oldState.channelId && newState.channelId) {
@@ -120,7 +119,7 @@ client.on('voiceStateUpdate', (oldState, newState) => {
 });
 
 // Logs rôles
-client.on('guildMemberUpdate', (oldMember, newMember) => {
+client.on('guildMemberUpdate', async (oldMember, newMember) => {
   const logChannel = newMember.guild.channels.cache.get(LOGS_ROLES);
   if (!logChannel) return;
 
@@ -128,19 +127,27 @@ client.on('guildMemberUpdate', (oldMember, newMember) => {
   const rolesRemoved = oldMember.roles.cache.filter(r => !newMember.roles.cache.has(r.id));
 
   if (rolesAdded.size > 0) {
+    const auditLogs = await newMember.guild.fetchAuditLogs({ type: 25, limit: 1 });
+    const auditEntry = auditLogs.entries.first();
+    const executor = auditEntry ? auditEntry.executor : null;
     const embed = new EmbedBuilder()
       .setTitle('✅ Rôle attribué')
       .setColor(0x00ff00)
       .setDescription(`${newMember} a reçu le rôle **${rolesAdded.first().name}**`)
+      .addFields({ name: 'Attribué par', value: executor ? `${executor}` : 'Inconnu' })
       .setTimestamp();
     logChannel.send({ embeds: [embed] });
   }
 
   if (rolesRemoved.size > 0) {
+    const auditLogs = await newMember.guild.fetchAuditLogs({ type: 25, limit: 1 });
+    const auditEntry = auditLogs.entries.first();
+    const executor = auditEntry ? auditEntry.executor : null;
     const embed = new EmbedBuilder()
       .setTitle('❌ Rôle retiré')
       .setColor(0xff0000)
       .setDescription(`${newMember} a perdu le rôle **${rolesRemoved.first().name}**`)
+      .addFields({ name: 'Retiré par', value: executor ? `${executor}` : 'Inconnu' })
       .setTimestamp();
     logChannel.send({ embeds: [embed] });
   }
@@ -153,12 +160,10 @@ client.on('interactionCreate', async (interaction) => {
     const member = interaction.member;
     const roleMembre = interaction.guild.roles.cache.find(r => r.name === 'Membre');
     if (roleMembre) await member.roles.add(roleMembre);
-
     const row = new ActionRowBuilder().addComponents(
       new ButtonBuilder().setCustomId('role_homme').setLabel('Homme').setStyle(ButtonStyle.Primary).setEmoji('👨'),
       new ButtonBuilder().setCustomId('role_femme').setLabel('Femme').setStyle(ButtonStyle.Danger).setEmoji('👩'),
     );
-
     await interaction.reply({
       content: `Règlement accepté ! Choisis maintenant ton genre :`,
       components: [row],
@@ -183,7 +188,6 @@ client.on('interactionCreate', async (interaction) => {
   if (interaction.commandName === 'reglement') {
     if (!interaction.member.permissions.has(PermissionsBitField.Flags.Administrator))
       return interaction.reply({ content: 'Tu n\'as pas la permission.', ephemeral: true });
-
     const embed = new EmbedBuilder()
       .setTitle('📜 Règlement du serveur')
       .setColor(0x5865F2)
@@ -194,11 +198,9 @@ client.on('interactionCreate', async (interaction) => {
         `➥ **4 : Publicité**\nToute publicité ou promotion est interdite sans autorisation.`
       )
       .setFooter({ text: 'En cliquant sur ✅ tu acceptes le règlement.' });
-
     const row = new ActionRowBuilder().addComponents(
       new ButtonBuilder().setCustomId('accepter_reglement').setLabel('J\'accepte ✅').setStyle(ButtonStyle.Success),
     );
-
     await interaction.reply({ content: 'Règlement envoyé !', ephemeral: true });
     await interaction.channel.send({ embeds: [embed], components: [row] });
   }
