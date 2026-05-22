@@ -39,6 +39,9 @@ const commands = [
   new SlashCommandBuilder()
     .setName('reglement')
     .setDescription('Envoyer le règlement dans le salon règlement'),
+  new SlashCommandBuilder()
+    .setName('aide')
+    .setDescription('Affiche toutes les commandes disponibles'),
 ].map(command => command.toJSON());
 
 client.once('ready', async () => {
@@ -238,9 +241,26 @@ client.on('interactionCreate', async (interaction) => {
 
   if (!interaction.isChatInputCommand()) return;
 
-  // Vérifier que la commande est utilisée dans #bot-commandes (sauf /reglement)
-  if (interaction.commandName !== 'reglement' && interaction.channelId !== BOT_COMMANDES) {
+  // Vérifier que la commande est utilisée dans #bot-commandes (sauf /reglement et /aide)
+  if (interaction.commandName !== 'reglement' && interaction.commandName !== 'aide' && interaction.channelId !== BOT_COMMANDES) {
     return interaction.reply({ content: `❌ Les commandes ne sont autorisées que dans <#${BOT_COMMANDES}> !`, ephemeral: true });
+  }
+
+  if (interaction.commandName === 'aide') {
+    const embed = new EmbedBuilder()
+      .setTitle('📋 Liste des commandes')
+      .setColor(0x5865F2)
+      .addFields(
+        { name: '👢 /expulser', value: 'Expulser un membre du serveur' },
+        { name: '🔨 /ban', value: 'Bannir un membre du serveur' },
+        { name: '✅ /unban', value: 'Unbannir un membre (ID requis)' },
+        { name: '⚠️ /avertir', value: 'Avertir un membre avec une raison' },
+        { name: '📜 /reglement', value: 'Envoyer le règlement (Admin uniquement)' },
+        { name: '📋 /aide', value: 'Afficher cette liste de commandes' },
+      )
+      .setFooter({ text: 'Les commandes sont réservées aux modérateurs.' })
+      .setTimestamp();
+    interaction.reply({ embeds: [embed] });
   }
 
   if (interaction.commandName === 'reglement') {
