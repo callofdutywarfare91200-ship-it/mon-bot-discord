@@ -1,5 +1,5 @@
 require('dotenv').config();
-const { Client, GatewayIntentBits, PermissionsBitField, REST, Routes, SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } = require('discord.js');
+const { Client, GatewayIntentBits, PermissionsBitField, REST, Routes, SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, AuditLogEvent } = require('discord.js');
 
 const client = new Client({
   intents: [
@@ -89,11 +89,12 @@ client.on('guildMemberRemove', (member) => {
 });
 
 // Logs vocal
-client.on('voiceStateUpdate', (oldState, newState) => {
+client.on('voiceStateUpdate', async (oldState, newState) => {
   const logChannel = newState.guild.channels.cache.get(LOGS_VOCAL);
   if (!logChannel) return;
   const member = newState.member;
 
+  // Rejoint un vocal
   if (!oldState.channelId && newState.channelId) {
     const embed = new EmbedBuilder()
       .setTitle('🎤 Rejoint un vocal')
@@ -101,18 +102,88 @@ client.on('voiceStateUpdate', (oldState, newState) => {
       .setDescription(`${member} a rejoint **${newState.channel.name}**`)
       .setTimestamp();
     logChannel.send({ embeds: [embed] });
-  } else if (oldState.channelId && !newState.channelId) {
+  }
+
+  // Quitté un vocal
+  else if (oldState.channelId && !newState.channelId) {
+    await new Promise(r => setTimeout(r, 500));
+    const auditLogs = await newState.guild.fetchAuditLogs({ type: AuditLogEvent.MemberDisconnect, limit: 1 });
+    const entry = auditLogs.entries.first();
+    const wasDisconnected = entry && (Date.now() - entry.createdTimestamp < 3000);
     const embed = new EmbedBuilder()
-      .setTitle('🔇 Quitté un vocal')
       .setColor(0xff6600)
-      .setDescription(`${member} a quitté **${oldState.channel.name}**`)
+      .setTimestamp();
+    if (wasDisconnected) {
+      embed.setTitle('🔌 Déconnecté du vocal');
+      embed.setDescription(`${member} a été déconnecté de **${oldState.channel.name}** par **${entry.executor.tag}**`);
+    } else {
+      embed.setTitle('🔇 Quitté un vocal');
+      embed.setDescription(`${member} a quitté **${oldState.channel.name}**`);
+    }
+    logChannel.send({ embeds: [embed] });
+  }
+
+  // Changé de vocal
+  else if (oldState.channelId !== newState.channelId) {
+    await new Promise(r => setTimeout(r, 500));
+    const auditLogs = await newState.guild.fetchAuditLogs({ type: AuditLogEvent.MemberMove, limit: 1 });
+    const entry = auditLogs.entries.first();
+    const wasMoved = entry && (Date.now() - entry.createdTimestamp < 3000);
+    const embed = new EmbedBuilder()
+      .setColor(0xffff00)
+      .setTimestamp();
+    if (wasMoved) {
+      embed.setTitle('🔀 Déplacé dans un vocal');
+      embed.setDescription(`${member} a été déplacé de **${oldState.channel.name}** vers **${newState.channel.name}** par **${entry.executor.tag}**`);
+    } else {
+      embed.setTitle('🔀 Changé de vocal');
+      embed.setDescription(`${member} est passé de **${oldState.channel.name}** à **${newState.channel.name}**`);
+    }
+    logChannel.send({ embeds: [embed] });
+  }
+
+  // Mis en sourdine par un modérateur
+  if (!oldState.serverMute && newState.serverMute) {
+    await new Promise(r => setTimeout(r, 500));
+    const auditLogs = await newState.guild.fetchAuditLogs({ type: AuditLogEvent.MemberUpdate, limit: 1 });
+    const entry = auditLogs.entries.first();
+    const embed = new EmbedBuilder()
+      .setTitle('🔇 Mis en sourdine')
+      .setColor(0xff0000)
+      .setDescription(`${member} a été mis en sourdine${entry ? ` par **${entry.executor.tag}**` : ''}`)
       .setTimestamp();
     logChannel.send({ embeds: [embed] });
-  } else if (oldState.channelId !== newState.channelId) {
+  }
+
+  // Sourdine retirée
+  if (oldState.serverMute && !newState.serverMute) {
     const embed = new EmbedBuilder()
-      .setTitle('🔀 Changé de vocal')
-      .setColor(0xffff00)
-      .setDescription(`${member} est passé de **${oldState.channel.name}** à **${newState.channel.name}**`)
+      .setTitle('🔊 Sourdine retirée')
+      .setColor(0x00ff00)
+      .setDescription(`${member} n'est plus en sourdine`)
+      .setTimestamp();
+    logChannel.send({ embeds: [embed] });
+  }
+
+  // Micro coupé par un modérateur
+  if (!oldState.serverDeaf && newState.serverDeaf) {
+    await new Promise(r => setTimeout(r, 500));
+    const auditLogs = await newState.guild.fetchAuditLogs({ type: AuditLogEvent.MemberUpdate, limit: 1 });
+    const entry = auditLogs.entries.first();
+    const embed = new EmbedBuilder()
+      .setTitle('✂️ Micro coupé')
+      .setColor(0xff0000)
+      .setDescription(`${member} a eu son micro coupé${entry ? ` par **${entry.executor.tag}**` : ''}`)
+      .setTimestamp();
+    logChannel.send({ embeds: [embed] });
+  }
+
+  // Micro rétabli
+  if (oldState.serverDeaf && !newState.serverDeaf) {
+    const embed = new EmbedBuilder()
+      .setTitle('🎙️ Micro rétabli')
+      .setColor(0x00ff00)
+      .setDescription(`${member} a retrouvé son micro`)
       .setTimestamp();
     logChannel.send({ embeds: [embed] });
   }
@@ -153,7 +224,7 @@ client.on('guildMemberUpdate', async (oldMember, newMember) => {
   }
 });
 
-// Interactions (boutons + slash commands)
+// Interactions
 client.on('interactionCreate', async (interaction) => {
 
   if (interaction.isButton() && interaction.customId === 'accepter_reglement') {
@@ -164,11 +235,7 @@ client.on('interactionCreate', async (interaction) => {
       new ButtonBuilder().setCustomId('role_homme').setLabel('Homme').setStyle(ButtonStyle.Primary).setEmoji('👨'),
       new ButtonBuilder().setCustomId('role_femme').setLabel('Femme').setStyle(ButtonStyle.Danger).setEmoji('👩'),
     );
-    await interaction.reply({
-      content: `Règlement accepté ! Choisis maintenant ton genre :`,
-      components: [row],
-      ephemeral: true
-    });
+    await interaction.reply({ content: `Règlement accepté ! Choisis maintenant ton genre :`, components: [row], ephemeral: true });
   }
 
   if (interaction.isButton() && interaction.customId === 'role_homme') {
