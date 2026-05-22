@@ -7,8 +7,15 @@ const client = new Client({
     GatewayIntentBits.GuildMembers,
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.MessageContent,
+    GatewayIntentBits.GuildVoiceStates,
   ]
 });
+
+// IDs des salons de logs
+const LOGS_ROLES = '1507450432216236083';
+const LOGS_VOCAL = '1507451538451464222';
+const LOGS_MODERATION = '1507452118074785922';
+const LOGS_MEMBRES = '1507452452889170100';
 
 const commands = [
   new SlashCommandBuilder()
@@ -50,22 +57,98 @@ client.on('guildMemberAdd', async (member) => {
   if (channel) {
     channel.send(`Bienvenue sur le serveur **${member.guild.name}**, ${member} ! Lis le règlement et amuse-toi bien !`);
   }
+  const logChannel = member.guild.channels.cache.get(LOGS_MEMBRES);
+  if (logChannel) {
+    const embed = new EmbedBuilder()
+      .setTitle('✅ Membre rejoint')
+      .setColor(0x00ff00)
+      .setDescription(`${member} a rejoint le serveur`)
+      .addFields({ name: 'ID', value: member.id })
+      .setTimestamp();
+    logChannel.send({ embeds: [embed] });
+  }
 });
 
-// Message d'au revoir
+// Quand quelqu'un quitte
 client.on('guildMemberRemove', (member) => {
   console.log(`${member.user.tag} a quitté le serveur`);
   const channel = member.guild.channels.cache.get('1506328557465370644');
-  console.log('Salon trouvé :', channel ? channel.name : 'NON TROUVÉ');
   if (channel) {
     channel.send(`Au revoir **${member.user.tag}**, on espère te revoir bientôt ! 👋`);
+  }
+  const logChannel = member.guild.channels.cache.get(LOGS_MEMBRES);
+  if (logChannel) {
+    const embed = new EmbedBuilder()
+      .setTitle('❌ Membre parti')
+      .setColor(0xff0000)
+      .setDescription(`**${member.user.tag}** a quitté le serveur`)
+      .addFields({ name: 'ID', value: member.id })
+      .setTimestamp();
+    logChannel.send({ embeds: [embed] });
+  }
+});
+
+// Logs vocal
+client.on('voiceStateUpdate', (oldState, newState) => {
+  const logChannel = newState.guild.channels.cache.get(LOGS_VOCAL);
+  if (!logChannel) return;
+
+  const member = newState.member;
+
+  if (!oldState.channelId && newState.channelId) {
+    const embed = new EmbedBuilder()
+      .setTitle('🎤 Rejoint un vocal')
+      .setColor(0x00aaff)
+      .setDescription(`${member} a rejoint **${newState.channel.name}**`)
+      .setTimestamp();
+    logChannel.send({ embeds: [embed] });
+  } else if (oldState.channelId && !newState.channelId) {
+    const embed = new EmbedBuilder()
+      .setTitle('🔇 Quitté un vocal')
+      .setColor(0xff6600)
+      .setDescription(`${member} a quitté **${oldState.channel.name}**`)
+      .setTimestamp();
+    logChannel.send({ embeds: [embed] });
+  } else if (oldState.channelId !== newState.channelId) {
+    const embed = new EmbedBuilder()
+      .setTitle('🔀 Changé de vocal')
+      .setColor(0xffff00)
+      .setDescription(`${member} est passé de **${oldState.channel.name}** à **${newState.channel.name}**`)
+      .setTimestamp();
+    logChannel.send({ embeds: [embed] });
+  }
+});
+
+// Logs rôles
+client.on('guildMemberUpdate', (oldMember, newMember) => {
+  const logChannel = newMember.guild.channels.cache.get(LOGS_ROLES);
+  if (!logChannel) return;
+
+  const rolesAdded = newMember.roles.cache.filter(r => !oldMember.roles.cache.has(r.id));
+  const rolesRemoved = oldMember.roles.cache.filter(r => !newMember.roles.cache.has(r.id));
+
+  if (rolesAdded.size > 0) {
+    const embed = new EmbedBuilder()
+      .setTitle('✅ Rôle attribué')
+      .setColor(0x00ff00)
+      .setDescription(`${newMember} a reçu le rôle **${rolesAdded.first().name}**`)
+      .setTimestamp();
+    logChannel.send({ embeds: [embed] });
+  }
+
+  if (rolesRemoved.size > 0) {
+    const embed = new EmbedBuilder()
+      .setTitle('❌ Rôle retiré')
+      .setColor(0xff0000)
+      .setDescription(`${newMember} a perdu le rôle **${rolesRemoved.first().name}**`)
+      .setTimestamp();
+    logChannel.send({ embeds: [embed] });
   }
 });
 
 // Interactions (boutons + slash commands)
 client.on('interactionCreate', async (interaction) => {
 
-  // Bouton : accepter le règlement
   if (interaction.isButton() && interaction.customId === 'accepter_reglement') {
     const member = interaction.member;
     const roleMembre = interaction.guild.roles.cache.find(r => r.name === 'Membre');
@@ -83,14 +166,12 @@ client.on('interactionCreate', async (interaction) => {
     });
   }
 
-  // Bouton : choisir Homme
   if (interaction.isButton() && interaction.customId === 'role_homme') {
     const role = interaction.guild.roles.cache.find(r => r.name === 'Homme');
     if (role) await interaction.member.roles.add(role);
     await interaction.reply({ content: `Rôle **Homme** attribué ! Bienvenue sur le serveur 🎮`, ephemeral: true });
   }
 
-  // Bouton : choisir Femme
   if (interaction.isButton() && interaction.customId === 'role_femme') {
     const role = interaction.guild.roles.cache.find(r => r.name === 'Femme');
     if (role) await interaction.member.roles.add(role);
@@ -99,7 +180,6 @@ client.on('interactionCreate', async (interaction) => {
 
   if (!interaction.isChatInputCommand()) return;
 
-  // Commande /reglement
   if (interaction.commandName === 'reglement') {
     if (!interaction.member.permissions.has(PermissionsBitField.Flags.Administrator))
       return interaction.reply({ content: 'Tu n\'as pas la permission.', ephemeral: true });
@@ -123,25 +203,40 @@ client.on('interactionCreate', async (interaction) => {
     await interaction.channel.send({ embeds: [embed], components: [row] });
   }
 
-  // Commande /expulser
   if (interaction.commandName === 'expulser') {
     if (!interaction.member.permissions.has(PermissionsBitField.Flags.KickMembers))
       return interaction.reply({ content: 'Tu n\'as pas la permission d\'expulser.', ephemeral: true });
     const target = interaction.options.getMember('membre');
     await target.kick();
     interaction.reply(`**${target.user.tag}** a été expulsé.`);
+    const logChannel = interaction.guild.channels.cache.get(LOGS_MODERATION);
+    if (logChannel) {
+      const embed = new EmbedBuilder()
+        .setTitle('👢 Membre expulsé')
+        .setColor(0xff6600)
+        .setDescription(`**${target.user.tag}** a été expulsé par ${interaction.member}`)
+        .setTimestamp();
+      logChannel.send({ embeds: [embed] });
+    }
   }
 
-  // Commande /ban
   if (interaction.commandName === 'ban') {
     if (!interaction.member.permissions.has(PermissionsBitField.Flags.BanMembers))
       return interaction.reply({ content: 'Tu n\'as pas la permission de ban.', ephemeral: true });
     const target = interaction.options.getMember('membre');
     await target.ban();
     interaction.reply(`**${target.user.tag}** a été ban.`);
+    const logChannel = interaction.guild.channels.cache.get(LOGS_MODERATION);
+    if (logChannel) {
+      const embed = new EmbedBuilder()
+        .setTitle('🔨 Membre banni')
+        .setColor(0xff0000)
+        .setDescription(`**${target.user.tag}** a été banni par ${interaction.member}`)
+        .setTimestamp();
+      logChannel.send({ embeds: [embed] });
+    }
   }
 
-  // Commande /unban
   if (interaction.commandName === 'unban') {
     if (!interaction.member.permissions.has(PermissionsBitField.Flags.BanMembers))
       return interaction.reply({ content: 'Tu n\'as pas la permission de unban.', ephemeral: true });
@@ -149,18 +244,36 @@ client.on('interactionCreate', async (interaction) => {
     try {
       await interaction.guild.members.unban(userId);
       interaction.reply(`Le membre a été unban.`);
+      const logChannel = interaction.guild.channels.cache.get(LOGS_MODERATION);
+      if (logChannel) {
+        const embed = new EmbedBuilder()
+          .setTitle('✅ Membre unban')
+          .setColor(0x00ff00)
+          .setDescription(`Le membre avec l'ID **${userId}** a été unban par ${interaction.member}`)
+          .setTimestamp();
+        logChannel.send({ embeds: [embed] });
+      }
     } catch (e) {
       interaction.reply({ content: 'ID invalide ou membre pas banni.', ephemeral: true });
     }
   }
 
-  // Commande /avertir
   if (interaction.commandName === 'avertir') {
     if (!interaction.member.permissions.has(PermissionsBitField.Flags.ModerateMembers))
       return interaction.reply({ content: 'Tu n\'as pas la permission d\'avertir.', ephemeral: true });
     const target = interaction.options.getMember('membre');
     const raison = interaction.options.getString('raison') || 'Aucune raison fournie';
     interaction.reply(`**${target.user.tag}** a reçu un avertissement : *${raison}*`);
+    const logChannel = interaction.guild.channels.cache.get(LOGS_MODERATION);
+    if (logChannel) {
+      const embed = new EmbedBuilder()
+        .setTitle('⚠️ Membre averti')
+        .setColor(0xffff00)
+        .setDescription(`**${target.user.tag}** a été averti par ${interaction.member}`)
+        .addFields({ name: 'Raison', value: raison })
+        .setTimestamp();
+      logChannel.send({ embeds: [embed] });
+    }
   }
 });
 
