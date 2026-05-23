@@ -1,5 +1,6 @@
 require('dotenv').config();
 const { Client, GatewayIntentBits, PermissionsBitField, REST, Routes, SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, AuditLogEvent } = require('discord.js');
+const Groq = require('groq-sdk');
 
 const client = new Client({
   intents: [
@@ -10,6 +11,8 @@ const client = new Client({
     GatewayIntentBits.GuildVoiceStates,
   ]
 });
+
+const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
 // IDs des salons
 const LOGS_ROLES = '1507450432216236083';
@@ -60,6 +63,38 @@ client.once('ready', async () => {
     console.log('Slash commands enregistrées !');
   } catch (error) {
     console.error(error);
+  }
+});
+
+// IA - Quand quelqu'un mentionne le bot
+client.on('messageCreate', async (message) => {
+  if (message.author.bot) return;
+  if (!message.mentions.has(client.user)) return;
+
+  const question = message.content.replace(`<@${client.user.id}>`, '').trim();
+  if (!question) return message.reply('Tu voulais me dire quelque chose ? 😊');
+
+  try {
+    message.channel.sendTyping();
+    const response = await groq.chat.completions.create({
+      model: 'llama3-8b-8192',
+      messages: [
+        {
+          role: 'system',
+          content: `Tu es un assistant sympa sur un serveur Discord gaming appelé "${message.guild.name}". Tu réponds en français, de façon courte et décontractée.`
+        },
+        {
+          role: 'user',
+          content: question
+        }
+      ],
+      max_tokens: 500,
+    });
+    const reply = response.choices[0].message.content;
+    message.reply(reply);
+  } catch (error) {
+    console.error(error);
+    message.reply('❌ Une erreur est survenue avec l\'IA, réessaie plus tard !');
   }
 });
 
@@ -288,6 +323,7 @@ client.on('interactionCreate', async (interaction) => {
         { name: '🧹 /clear', value: 'Supprimer des messages (nombre ou "all")' },
         { name: '📜 /reglement', value: 'Envoyer le règlement (Admin uniquement)' },
         { name: '📋 /aide', value: 'Afficher cette liste de commandes' },
+        { name: '🤖 @Vice', value: 'Mentionner le bot pour parler avec l\'IA' },
       )
       .setFooter({ text: 'Les commandes sont réservées aux modérateurs.' })
       .setTimestamp();
