@@ -42,6 +42,14 @@ const commands = [
   new SlashCommandBuilder()
     .setName('aide')
     .setDescription('Affiche toutes les commandes disponibles'),
+  new SlashCommandBuilder()
+    .setName('clear')
+    .setDescription('Supprimer des messages dans le salon')
+    .addStringOption(option =>
+      option.setName('nombre')
+        .setDescription('Nombre de messages à supprimer ou "all" pour tout supprimer')
+        .setRequired(true)
+    ),
 ].map(command => command.toJSON());
 
 client.once('ready', async () => {
@@ -264,7 +272,7 @@ client.on('interactionCreate', async (interaction) => {
 
   if (!interaction.isChatInputCommand()) return;
 
-  if (interaction.commandName !== 'reglement' && interaction.commandName !== 'aide' && interaction.channelId !== BOT_COMMANDES) {
+  if (interaction.commandName !== 'reglement' && interaction.commandName !== 'aide' && interaction.commandName !== 'clear' && interaction.channelId !== BOT_COMMANDES) {
     return interaction.reply({ content: `❌ Les commandes ne sont autorisées que dans <#${BOT_COMMANDES}> !`, ephemeral: true });
   }
 
@@ -277,12 +285,48 @@ client.on('interactionCreate', async (interaction) => {
         { name: '🔨 /ban', value: 'Bannir un membre du serveur' },
         { name: '✅ /unban', value: 'Unbannir un membre (ID requis)' },
         { name: '⚠️ /avertir', value: 'Avertir un membre avec une raison' },
+        { name: '🧹 /clear', value: 'Supprimer des messages (nombre ou "all")' },
         { name: '📜 /reglement', value: 'Envoyer le règlement (Admin uniquement)' },
         { name: '📋 /aide', value: 'Afficher cette liste de commandes' },
       )
       .setFooter({ text: 'Les commandes sont réservées aux modérateurs.' })
       .setTimestamp();
     interaction.reply({ embeds: [embed] });
+  }
+
+  if (interaction.commandName === 'clear') {
+    if (!interaction.member.permissions.has(PermissionsBitField.Flags.ManageMessages))
+      return interaction.reply({ content: '❌ Tu n\'as pas la permission de supprimer des messages.', ephemeral: true });
+
+    const nombre = interaction.options.getString('nombre');
+
+    if (nombre.toLowerCase() === 'all') {
+      await interaction.deferReply({ ephemeral: true });
+      let deleted;
+      do {
+        const messages = await interaction.channel.messages.fetch({ limit: 100 });
+        if (messages.size === 0) break;
+        deleted = await interaction.channel.bulkDelete(messages, true);
+      } while (deleted.size > 0);
+      await interaction.editReply({ content: '✅ Tous les messages ont été supprimés !' });
+    } else {
+      const count = parseInt(nombre);
+      if (isNaN(count) || count < 1 || count > 100)
+        return interaction.reply({ content: '❌ Donne un nombre entre 1 et 100 ou "all".', ephemeral: true });
+      await interaction.channel.bulkDelete(count, true);
+      await interaction.reply({ content: `✅ ${count} messages supprimés !`, ephemeral: true });
+    }
+
+    const logChannel = interaction.guild.channels.cache.get(LOGS_MODERATION);
+    if (logChannel) {
+      const embed = new EmbedBuilder()
+        .setTitle('🧹 Messages supprimés')
+        .setColor(0xff6600)
+        .setDescription(`${interaction.member} a supprimé des messages dans <#${interaction.channelId}>`)
+        .addFields({ name: 'Nombre', value: nombre.toLowerCase() === 'all' ? 'Tous' : nombre })
+        .setTimestamp();
+      logChannel.send({ embeds: [embed] });
+    }
   }
 
   if (interaction.commandName === 'reglement') {
