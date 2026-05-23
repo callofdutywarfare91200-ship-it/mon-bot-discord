@@ -59,7 +59,19 @@ client.once('ready', async () => {
 client.on('guildMemberAdd', async (member) => {
   const channel = member.guild.channels.cache.get('1506035394288943208');
   if (channel) {
-    channel.send(`Bienvenue sur le serveur **${member.guild.name}**, ${member} ! Lis le règlement et amuse-toi bien !`);
+    const embed = new EmbedBuilder()
+      .setTitle('👋 Nouveau membre !')
+      .setColor(0x00ff00)
+      .setDescription(`Bienvenue sur **${member.guild.name}**, ${member} !\nLis le règlement et amuse-toi bien 🎮`)
+      .setThumbnail(member.user.displayAvatarURL({ dynamic: true, size: 256 }))
+      .addFields(
+        { name: '👤 Membre', value: `${member.user.tag}`, inline: true },
+        { name: '👥 Nombre de membres', value: `${member.guild.memberCount}`, inline: true },
+        { name: '📅 Compte créé le', value: `<t:${Math.floor(member.user.createdTimestamp / 1000)}:D>`, inline: true }
+      )
+      .setFooter({ text: `ID: ${member.id}` })
+      .setTimestamp();
+    channel.send({ embeds: [embed] });
   }
   const logChannel = member.guild.channels.cache.get(LOGS_MEMBRES);
   if (logChannel) {
@@ -78,7 +90,18 @@ client.on('guildMemberRemove', (member) => {
   console.log(`${member.user.tag} a quitté le serveur`);
   const channel = member.guild.channels.cache.get('1506328557465370644');
   if (channel) {
-    channel.send(`Au revoir **${member.user.tag}**, on espère te revoir bientôt ! 👋`);
+    const embed = new EmbedBuilder()
+      .setTitle('👋 Au revoir !')
+      .setColor(0xff0000)
+      .setDescription(`**${member.user.tag}** a quitté le serveur.\nOn espère te revoir bientôt !`)
+      .setThumbnail(member.user.displayAvatarURL({ dynamic: true, size: 256 }))
+      .addFields(
+        { name: '👤 Membre', value: `${member.user.tag}`, inline: true },
+        { name: '👥 Membres restants', value: `${member.guild.memberCount}`, inline: true }
+      )
+      .setFooter({ text: `ID: ${member.id}` })
+      .setTimestamp();
+    channel.send({ embeds: [embed] });
   }
   const logChannel = member.guild.channels.cache.get(LOGS_MEMBRES);
   if (logChannel) {
@@ -241,7 +264,6 @@ client.on('interactionCreate', async (interaction) => {
 
   if (!interaction.isChatInputCommand()) return;
 
-  // Vérifier que la commande est utilisée dans #bot-commandes (sauf /reglement et /aide)
   if (interaction.commandName !== 'reglement' && interaction.commandName !== 'aide' && interaction.channelId !== BOT_COMMANDES) {
     return interaction.reply({ content: `❌ Les commandes ne sont autorisées que dans <#${BOT_COMMANDES}> !`, ephemeral: true });
   }
